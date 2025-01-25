@@ -55,11 +55,3 @@ def extract_image_url(pin_url):
     except Exception as e:
         print(f"An error occurred while extracting the image URL: {e}")
         return None
-
-
-# Example usage
-if __name__ == "__main__":
-    pinterest_url = "https://www.pinterest.com/pin/1125196288151920634/"
-    result = download_pinterest_image(pinterest_url)
-    print("hello")
-    print(result)
