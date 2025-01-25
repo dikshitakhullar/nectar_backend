@@ -30,6 +30,14 @@ class RoomUploader:
             raise
 
 def main():
+    # Step 1: Ask for Pinterest URL
+    pinterest_url = 'https://www.pinterest.com/pin/27514247717449869/' #input("Enter the Pinterest Pin URL: ").strip()
+
+    # Step 2: Extract and Download Image
+    save_path = "downloaded_image.jpg"
+    print("\nDownloading image...")
+    download_result = download_pinterest_image(pinterest_url, save_path)
+
     uploader = RoomUploader()
     # Example usage
     # Create room metadata (hardcoded for this example)
