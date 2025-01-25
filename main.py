@@ -1,4 +1,36 @@
-# nectar_backend
+from datetime import datetime
+import logging
+from config import config
+from firebase_admin import credentials, initialize_app
+from models.room import *
+from firebase_operations.firebase_manager import FirebaseManager
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# currently only tests uploading a room to firebase (image and metadata)
+class RoomUploader:
+
+    def __init__(self):
+        cred = credentials.Certificate(config.FIREBASE_CREDENTIALS)
+        initialize_app(cred, {'storageBucket': config.FIREBASE_STORAGE_BUCKET})
+        self.firebase = FirebaseManager()
+        # initialize.initialize_firebase()
+
+    def upload_room(self, image_path: str, room: Room) -> tuple[str, str]:
+        try:
+            doc_id, image_url = self.firebase.upload_room(
+                image_path=image_path,
+                metadata=room.model_dump(exclude_none=True)
+            )
+            logger.info(f"Uploaded room {room.title} with ID: {doc_id}")
+            return doc_id, image_url
+        except Exception as e:
+            logger.error(f"Error uploading room: {str(e)}")
+            raise
+
+def main():
+    uploader = RoomUploader()
     # Example usage
     # Create room metadata (hardcoded for this example)
     # room_data = Room(
@@ -193,3 +225,11 @@
     is_original=True,  
     timestamp=datetime.now(),
     )
+    try:
+        doc_id, url = uploader.upload_room("neo_classical_dining.jpg", room_data)
+        logger.info(f"Success - Doc ID: {doc_id}, URL: {url}")
+    except Exception as e:
+        logger.error(f"Failed: {str(e)}")
+
+if __name__ == "__main__":
+    main()
