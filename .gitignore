@@ -19,3 +19,9 @@ credentials/
 
 # Miscellaneous
 .DS_Store
+
+*.pt
+
+dataset/
+
+runs/

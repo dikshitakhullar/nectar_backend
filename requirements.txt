@@ -8,6 +8,22 @@ python-multipart==0.0.9
 # Image Processing (Optional)
 pillow==10.2.0
 
-
 python-dotenv>=0.19.0
 requests>=2.26.0
+
+
+# Transformers library for CLIP model
+transformers>=4.0.0
+
+# PyTorch for model computation
+torch>=1.7.1
+
+# PIL (Pillow) for image processing
+pillow>=10.0.0
+
+# Ultralytics for YOLO object detection
+ultralytics
+
+colorthief
+
+webcolors
