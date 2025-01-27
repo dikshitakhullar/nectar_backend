@@ -5,7 +5,8 @@ from ultralytics import YOLO
 
 def analyze_room_objects(image_path):
     # Load the object detection model (YOLO)
-    object_detector = YOLO("yolov8x.pt")  # Use a lightweight YOLOv8 model
+    # object_detector = YOLO("yolov8x.pt")  # Use a lightweight YOLOv8 model
+    object_detector = YOLO('runs/detect/yolov8_home_decor8/weights/best.pt')  # Update with the correct path
 
     # Load the style and texture classification model (CLIP)
     model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")

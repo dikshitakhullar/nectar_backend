@@ -1,8 +1,6 @@
 from datetime import datetime
 import logging
 from config import config
-from firebase_admin import credentials, initialize_app
-from firebase_operations.firebase_manager import FirebaseManager
 from pinterest_utils import download_pinterest_image
 from clip import get_clip_embeddings
 from room_object_analysis import analyze_room_objects
