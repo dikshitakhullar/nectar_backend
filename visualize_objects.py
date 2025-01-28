@@ -90,7 +90,7 @@ def draw_bounding_boxes(image_path, detected_objects, output_path="output_image.
         cropped_object = image.crop((x1, y1, x2, y2))
         color = detect_dominant_color(cropped_object)
 
-        label = f"{obj['attributes']} (Conf: {obj['confidence']:.2f}, Color: {color})"
+        label = f"{obj['class_name']}: {obj['attributes']} (Conf: {obj['confidence']:.2f}, Color: {color})"
         print(label)
         # Draw bounding box
         draw.rectangle([(x1, y1), (x2, y2)], outline="red", width=3)

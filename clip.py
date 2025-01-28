@@ -1,6 +1,7 @@
 from transformers import CLIPProcessor, CLIPModel
 import torch
 from PIL import Image
+from models.room import RoomStyle, RoomType
 
 
 def get_clip_embeddings(image_path):
@@ -36,10 +37,8 @@ def get_clip_embeddings(image_path):
         "luxury library",
         "modern nursery",
         "vintage nursery",
-        "traditional media room",
-        "modern media room",
-        "rustic guest room",
-        "luxury guest room"
+        "rustic bedroom",
+        "luxury bedroom"
     ]
 
     # Compute text embeddings for room types
@@ -59,6 +58,27 @@ def get_clip_embeddings(image_path):
     # Find the closest room type and style to the image
     similarities = torch.matmul(image_features, text_features.T)
     best_match_idx = torch.argmax(similarities, dim=1)
-    best_room_type = room_types[best_match_idx.item()]
+    best_match = room_types[best_match_idx.item()]
 
-    print("Best Matching Room Type and Style:", best_room_type)
+    # Split into style and room type
+    parts = best_match.split()
+    style = parts[0]  # First word is the style
+    room_type = " ".join(parts[1:])  # Rest is the room type
+
+    # Try to map to enums
+    try:
+        room_style = RoomStyle(style.lower())
+    except ValueError:
+        # Default to modern if style not found in enum
+        room_style = RoomStyle.MODERN
+
+    try:
+        # Remove spaces and convert to uppercase for enum matching
+        room_type_key = room_type.replace(" ", "_").upper()
+        room_type = RoomType[room_type_key]
+    except KeyError:
+        # Default to living room if type not found in enum
+        room_type_enum = RoomType.LIVING_ROOM
+
+    print(f"Detected Style: {room_style.value}, Room Type: {room_type.value}")
+    return room_style, room_type

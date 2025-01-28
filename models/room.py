@@ -12,6 +12,11 @@ class RoomType(str, Enum):
    HOME_OFFICE = "Home Office"
    COFFEE_SHOP = "Coffee Shop"
    OFFICE = "Office"
+   HALLWAY = "Hallway"
+   GARDEN = "Garden"
+   OUTDOOR_PATIO = "Outdoor Patio"
+   STUDY_ROOM = "Study Room"
+   NURSERY = "Nursery"
 
 class ColorPalette(str, Enum):
    WARM_NEUTRALS = "warm_neutrals"
@@ -40,6 +45,9 @@ class RoomStyle(str, Enum):
    MEDITERRANEAN = "mediterranean"
    ASIAN = "asian"
    TRANSITIONAL = "transitional"
+   IMPERIAL = "imperial"
+   VINTAGE = "vintage"
+   LUXURY = "luxury"
 
 class LightingType(str, Enum):
    NATURAL = "natural"
@@ -156,12 +164,23 @@ class FurniturePiece(BaseModel):
 class RoomFurniture(BaseModel):
     pieces: Optional[List[FurniturePiece]] = None  # Made optional
 
+class CarpetMaterial(BaseModel):
+    material_type: str  # e.g., wool, nylon, polyester
+    color: str
+
+class Painting(BaseModel):
+    type: str  # e.g., abstract, landscape, portrait
+    style: str  # e.g., modern, classical, contemporary
+    size: str  # e.g., large, medium, small
+
 class RoomMetadata(BaseModel):
     tags: Optional[List[str]] = None
     ceiling_height: Optional[float] = None
     color_palette: Optional[List[ColorPalette]] = None
     lighting: Optional[Lighting] = None
     floor: Optional[MaterialFinish] = None
+    carpet: Optional[CarpetMaterial] = None
+    paintings: Optional[List[Painting]] = None
     walls: Optional[MaterialFinish] = None
     ceiling: Optional[MaterialFinish] = None
     furniture: Optional[RoomFurniture] = None

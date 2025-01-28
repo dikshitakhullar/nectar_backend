@@ -24,7 +24,7 @@ class FirebaseManager:
         extension = Path(image_path).suffix
         random_filename = f"{uuid.uuid4()}{extension}"
         
-        blob = self.bucket.blob(f"room_images/{random_filename}")
+        blob = self.bucket.blob(f"room_images_test/{random_filename}")
         blob.upload_from_filename(image_path)
         blob.make_public()
         return blob.public_url
@@ -37,7 +37,7 @@ class FirebaseManager:
         metadata['timestamp'] = datetime.now()
 
         # Upload metadata
-        doc_ref = self.db.collection('room_metadata').document()
+        doc_ref = self.db.collection('room').document()
         doc_ref.set(metadata)
 
         return doc_ref.id, image_url

@@ -193,6 +193,88 @@ class SimilarImagesService:
             logger.error(f"Full traceback:", exc_info=True)
             raise
 
+    async def generate_similar_images_from_pinterest(
+        self,
+        room: Room,
+        pinterest_url: str,
+        strength: float = 0.7
+    ) -> List[Room]:
+        """
+        Generate similar images based on a Room object and Pinterest image URL.
+        
+        Args:
+            room (Room): The room object containing description and metadata
+            pinterest_url (str): URL of the Pinterest image to use as base
+            strength (float): Strength of the transformation (0.0 to 1.0)
+            
+        Returns:
+            List[Room]: List of generated similar rooms
+        """
+        logger.info(f"Generating similar images for Pinterest URL: {pinterest_url}")
+        
+        try:
+            # Construct simple prompt using room description
+            base_prompt = f"Generate similar: {room.description}"
+            logger.info(f"Generated base prompt: {base_prompt}")
+            
+            # Generate images
+            config = Img2ImgConfig(
+                init_image=pinterest_url,
+                prompt=base_prompt,
+                negative_prompt=StableDiffusionImg2Img.default_negative_prompt(),
+            )
+            
+            logger.info("Attempting to generate similar images...")
+            image_urls = await self.sd_service.generate_similar_images(config)
+            logger.info(f"Generated {len(image_urls)} image URLs")
+            
+            # Store similar rooms
+            similar_rooms = []
+            for url in image_urls:
+                logger.info(f"Processing image URL: {url}")
+                
+                # Create new room using original room's data
+                new_room = self._create_similar_room(
+                    original_room=room,
+                    image_url=url,
+                    modified_metadata=None  # No modifications needed
+                )
+                print("new room", new_room)
+                
+                # Upload room to get a valid ID
+                logger.info("Uploading new room...")
+                doc_id, image_url  = await self.firebase_manager.upload_room(
+                    image_path="downloaded_image.jpg",  # Placeholder for actual image paths
+                    metadata=new_room.dict()
+                )
+                logger.info(f"Uploaded room ID: {doc_id} and image URL: {image_url}")
+                
+                new_room.id = doc_id
+                new_room.image_url = image_url
+            
+                # Create room relationship - no need to create yet 
+                # since pinterest room is not uploaded - we can in the future
+
+                # logger.info("Creating room relationship...")
+                # await self.firebase_manager.create_room_relationship(
+                #     parent_id=room.id, # null as of now
+                #     similar_id=doc_id,
+                #     changes=None,  # No specific changes to track
+                #     prompt=base_prompt
+                # )
+                
+                similar_rooms.append(new_room)
+            
+            logger.info(f"Successfully generated {len(image_urls)} images:")
+            for room in similar_rooms:
+                logger.info(f"Room ID: {room.id} - {room.image_url}")
+            return similar_rooms
+
+        except Exception as e:
+            logger.error(f"Error in generate_similar_images_from_pinterest: {str(e)}")
+            logger.error(f"Full traceback:", exc_info=True)
+            raise
+
     def _get_negative_prompt(self) -> str:
         """Get negative prompt for interior design."""
         negative_elements = [
