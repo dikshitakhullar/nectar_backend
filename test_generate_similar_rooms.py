@@ -28,7 +28,8 @@ async def generate_similar_rooms(room_id: str):
         
         similar_service = SimilarImagesService(
             firebase_manager=firebase_manager,
-            sd_service=sd_service
+            sd_service=sd_service,
+            text2img_service=None
         )
         
         # Create proper RoomChange objects

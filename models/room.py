@@ -114,12 +114,32 @@ class FurnitureType(str, Enum):
    RECLINER = "recliner"
    CHAISE_LOUNGE = "chaise_lounge"
 
+class CeilingStyle(str, Enum):
+    PLAIN = "plain"
+    COVE = "cove"
+    TRAY = "tray"
+    BEAMED = "beamed"
+    VAULTED = "vaulted"
+    COFFERED = "coffered"
+    TIN = "tin"
+    WOOD_PANEL = "wood_panel"
+    DROP = "drop"
+    BARREL = "barrel"
+    DOME = "dome"
+    SUSPENDED = "suspended"
+
+
 class MaterialFinish(BaseModel):
     material: str
     color: str
     texture: Optional[str] = None
     pattern: Optional[str] = None
     finish: Optional[str] = None
+
+class Ceiling(BaseModel):
+    style: Optional[CeilingStyle] = CeilingStyle.PLAIN
+    height: Optional[float] = None
+    material_finish: Optional[MaterialFinish] = None
 
 class Lighting(BaseModel):
     type: Optional[LightingType] = LightingType.MIXED
@@ -175,14 +195,13 @@ class Painting(BaseModel):
 
 class RoomMetadata(BaseModel):
     tags: Optional[List[str]] = None
-    ceiling_height: Optional[float] = None
+    ceiling: Optional[Ceiling] = None
     color_palette: Optional[List[ColorPalette]] = None
     lighting: Optional[Lighting] = None
     floor: Optional[MaterialFinish] = None
     carpet: Optional[CarpetMaterial] = None
     paintings: Optional[List[Painting]] = None
     walls: Optional[MaterialFinish] = None
-    ceiling: Optional[MaterialFinish] = None
     furniture: Optional[RoomFurniture] = None
     fixtures: Optional[FixtureMaterials] = None
     windows: Optional[List[Window]] = None

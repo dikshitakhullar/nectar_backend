@@ -1,70 +1,111 @@
-from datetime import datetime
+# main.py
 import logging
-import asyncio
+from contextlib import asynccontextmanager
+from firebase_admin import credentials, initialize_app, get_app
 from config import config
-from firebase_admin import credentials, initialize_app, storage
 from firebase_operations.firebase_manager import FirebaseManager
-from pinterest_utils import download_pinterest_image
 from stable_diffusion.img2img_service import StableDiffusionImg2Img
+from stable_diffusion.text2img_service import StableDiffusionText2Img
+from services.similar_images_service import SimilarImagesService
+from pinterest_utils import download_pinterest_image
 from clip import get_clip_embeddings
 from room_object_analysis import analyze_room_objects, create_room_from_analysis
-from visualize_objects import draw_bounding_boxes
-from services.similar_images_service import SimilarImagesService
-from models.room import Room, RoomStyle, RoomType
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-logging.basicConfig(level=logging.INFO)
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-
-async def async_main():
-    """
-    Async main script function for extracting and processing Pinterest images.
-    """
-    cred = credentials.Certificate(config.FIREBASE_CREDENTIALS)
-    app = initialize_app(cred, {'storageBucket': config.FIREBASE_STORAGE_BUCKET})
-        
-    firebase_manager = FirebaseManager()
-    sd_service = StableDiffusionImg2Img(
-        api_key=config.STABLE_DIFFUSION_API_KEY
-    )
-        
-    similar_service = SimilarImagesService(
-        firebase_manager=firebase_manager,
-        sd_service=sd_service
-    )
-
+def initialize_firebase():
+    """Initialize Firebase if not already initialized."""
     try:
-        # Step 1: Provide Pinterest URL
-        pinterest_url = input("Enter the Pinterest Pin URL: ").strip()
+        return get_app()
+    except ValueError:
+        cred = credentials.Certificate(config.FIREBASE_CREDENTIALS)
+        return initialize_app(cred, {'storageBucket': config.FIREBASE_STORAGE_BUCKET})
 
-        # Step 2: Extract and Download Image
-        image_path = "downloaded_image.jpg"
-        logger.info("Downloading image...")
-        download_result = download_pinterest_image(pinterest_url, image_path)
-        logger.info("Image downloaded successfully.")
-
-        # Step 3: Analyze Room Objects
-        room_style, room_type = get_clip_embeddings(image_path)
-        detected_objects = analyze_room_objects(image_path)
-        draw_bounding_boxes(image_path, detected_objects)
-        room = create_room_from_analysis(detected_objects, room_style, room_type)
-        print("Room: ", room)
-
-        public_url = firebase_manager.upload_image(image_path)
+def get_services():
+    """Initialize all required services."""
+    try:
+        # Initialize Firebase safely
+        firebase_app = initialize_firebase()
+        logger.info("Firebase initialized successfully")
         
-        # Step 4: Generate similar images
-        similar_rooms = await similar_service.generate_similar_images_from_pinterest(
-            room=room,
-            pinterest_url=public_url
+        # Create service instances
+        firebase_manager = FirebaseManager()
+        sd_service = StableDiffusionImg2Img(api_key=config.STABLE_DIFFUSION_API_KEY)
+        text2img_service = StableDiffusionText2Img(api_key=config.STABLE_DIFFUSION_API_KEY)
+        
+        # Create SimilarImagesService
+        similar_service = SimilarImagesService(
+            firebase_manager=firebase_manager,
+            sd_service=sd_service,
+            text2img_service=text2img_service
         )
-    except Exception as e:
-        logger.error(f"Error in main execution: {str(e)}")
 
-def main():
-    """
-    Entry point that runs the async main function.
-    """
-    asyncio.run(async_main())
+        return {
+            'firebase_manager': firebase_manager,
+            'similar_service': similar_service,
+            'download_pinterest_image': download_pinterest_image,
+            'get_clip_embeddings': get_clip_embeddings,
+            'analyze_room_objects': analyze_room_objects,
+            'create_room_from_analysis': create_room_from_analysis
+        }
+    except Exception as e:
+        logger.error(f"Error initializing services: {str(e)}")
+        raise
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("Starting up FastAPI application")
+    # Initialize services
+    app.state.services = get_services()
+    yield
+    # Shutdown
+    logger.info("Shutting down FastAPI application")
+
+# Create FastAPI app with lifespan
+app = FastAPI(
+    title="Nectar Room Analysis API",
+    description="API for analyzing and generating room images",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["chrome-extension://*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Import routes after services are initialized
+from api.app import setup_routes
+setup_routes(app)
+
+# Add default route
+@app.get("/")
+async def root():
+    """Root endpoint returning API information."""
+    return JSONResponse({
+        "name": "Nectar Room Analysis API",
+        "version": "1.0.0",
+        "endpoints": {
+            "analyze": "/api/analyze",
+            "generate": "/api/generate",
+            "health": "/health",
+            "docs": "/docs"
+        }
+    })
 
 if __name__ == "__main__":
-    main()
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

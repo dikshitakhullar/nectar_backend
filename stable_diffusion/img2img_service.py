@@ -2,6 +2,9 @@ from typing import List, Optional
 import requests
 import logging
 import asyncio
+import json
+import random
+from requests.exceptions import RequestException, Timeout
 
 class Img2ImgConfig:
     def __init__(
@@ -33,6 +36,10 @@ class Img2ImgConfig:
         self.scheduler = scheduler
         self.tomesd = tomesd
         self.use_karras_sigmas = use_karras_sigmas
+    
+    def to_payload(self) -> dict:
+        """Convert config to API payload format"""
+        return {k: v for k, v in self.__dict__.items() if v is not None}
 
 class StableDiffusionImg2Img:
     def __init__(self, api_key: str, base_url: str = "https://modelslab.com/api/v6"):
@@ -40,9 +47,15 @@ class StableDiffusionImg2Img:
         self.base_url = base_url
         self.img2img_endpoint = f"{base_url}/images/img2img"
         self.logger = logging.getLogger(__name__)
+        
+        # Configuration for retries
+        self.max_retries = 5  # Maximum number of retries
+        self.base_delay = 20  # Base delay in seconds
+        self.max_delay = 180  # Maximum delay of 3 minutes
+        self.request_timeout = 120  # Request timeout in seconds
+        self.max_polling_attempts = 20  # Maximum number of polling attempts
 
-    @classmethod
-    def default_negative_prompt(cls) -> str:
+    def get_default_negative_prompt(self) -> str:
         """Get default negative prompt for interior design."""
         return (
             "blur, blurry, distortion, distorted, low quality, "
@@ -54,97 +67,115 @@ class StableDiffusionImg2Img:
             "missing details, unnatural colors, artificial textures"
         )
 
+    def _calculate_delay(self, attempt: int) -> float:
+        """Calculate delay with exponential backoff and jitter."""
+        delay = min(self.base_delay * (1.5 ** (attempt - 1)), self.max_delay)
+        return delay + random.uniform(1, 5)
+
     async def generate_similar_images(self, config: Img2ImgConfig) -> List[str]:
-        """Generate similar images using img2img endpoint"""
+        """Generate similar images with bounded retries."""
         payload = {
             "key": self.api_key,
-            "model_id": config.model_id,
-            "prompt": config.prompt,
-            "negative_prompt": config.negative_prompt or self.default_negative_prompt(),
-            "init_image": config.init_image,
-            "samples": config.samples,
-            "num_inference_steps": config.num_inference_steps,
-            "safety_checker": config.safety_checker,
-            "enhance_prompt": config.enhance_prompt,
-            "guidance_scale": config.guidance_scale,
-            "strength": config.strength,
-            "scheduler": config.scheduler,
-            "tomesd": config.tomesd,
-            "use_karras_sigmas": config.use_karras_sigmas
+            **config.to_payload()
         }
-
-        # Remove None values
-        payload = {k: v for k, v in payload.items() if v is not None}
-
-        headers = {
-            'Content-Type': 'application/json'
-        }
-
-        try:
-            self.logger.info("Making request to generate images...")
-            response = requests.post(
-                self.img2img_endpoint,
-                json=payload,
-                headers=headers
-            )
-            response.raise_for_status()
-            result = response.json()
-
-            self.logger.debug(f"Initial response: {result}")
-
-            if result["status"] == "success":
-                self.logger.info("Generation successful!")
-                return result["output"]
-            elif result["status"] == "processing":
-                task_id = result["id"]
-                fetch_url = f"{self.base_url}/images/fetch/{task_id}"
-                self.logger.info(f"Images processing, fetching from: {fetch_url}")
-                return await self._poll_for_results(task_id)
-            else:
-                error_message = result.get("message", "Unknown API error")
-                raise Exception(f"API Error: {error_message}")
-
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"Request failed: {str(e)}")
-            raise
-
-    async def _poll_for_results(self, task_id: str, max_attempts: int = 20) -> List[str]:
-        """Poll the fetch endpoint until results are ready."""
-        fetch_url = f"{self.base_url}/images/fetch/{task_id}"
         
-        for attempt in range(max_attempts):
+        # Log the payload with redacted API key
+        safe_payload = {**payload, "key": "REDACTED"}
+        self.logger.info(f"Request payload: {json.dumps(safe_payload, indent=2)}")
+
+        headers = {'Content-Type': 'application/json'}
+
+        for attempt in range(1, self.max_retries + 1):
             try:
-                self.logger.info(f"Polling attempt {attempt + 1}/{max_attempts}")
+                self.logger.info(f"Generation attempt {attempt}/{self.max_retries}")
+                
+                response = requests.post(
+                    self.img2img_endpoint,
+                    json=payload,
+                    headers=headers,
+                    timeout=self.request_timeout
+                )
+
+                self.logger.debug(f"Response status: {response.status_code}")
+                
+                try:
+                    result = response.json()
+                except json.JSONDecodeError:
+                    self.logger.error(f"Invalid JSON response: {response.text}")
+                    raise Exception("Invalid JSON response from API")
+
+                # Handle rate limits and retryable responses
+                if response.status_code == 429 or (
+                    isinstance(result, dict) and 
+                    "try again" in str(result.get("message", "")).lower()
+                ):
+                    if attempt == self.max_retries:
+                        raise Exception("Max retries reached - rate limit persists")
+                    
+                    delay = self._calculate_delay(attempt)
+                    self.logger.info(f"Rate limit hit, waiting {delay:.1f} seconds...")
+                    await asyncio.sleep(delay)
+                    continue
+
+                response.raise_for_status()
+
+                if isinstance(result, dict):
+                    if result.get("status") == "success" and "output" in result:
+                        return result["output"]
+                    elif result.get("status") == "processing":
+                        self.logger.info("Request is processing, waiting for result...")
+                        return await self._poll_for_results(result["id"])
+                    else:
+                        error_msg = result.get("message", "Unknown API error")
+                        raise Exception(f"API Error: {error_msg}")
+
+                raise Exception("Invalid response format from API")
+
+            except (Timeout, RequestException) as e:
+                if attempt == self.max_retries:
+                    raise Exception(f"Failed after {self.max_retries} attempts: {str(e)}")
+                
+                delay = self._calculate_delay(attempt)
+                self.logger.error(f"Request failed: {str(e)}, retrying in {delay:.1f} seconds...")
+                await asyncio.sleep(delay)
+
+    async def _poll_for_results(self, task_id: str) -> List[str]:
+        """Poll for results with bounded attempts."""
+        fetch_url = f"{self.base_url}/images/fetch/{task_id}"
+        poll_interval = 15
+        
+        for attempt in range(1, self.max_polling_attempts + 1):
+            try:
+                self.logger.info(f"Polling for results, attempt {attempt}/{self.max_polling_attempts}")
                 response = requests.post(
                     fetch_url,
                     json={"key": self.api_key},
-                    headers={'Content-Type': 'application/json'}
+                    headers={'Content-Type': 'application/json'},
+                    timeout=30
                 )
-                response.raise_for_status()
-                result = response.json()
                 
-                self.logger.debug(f"Poll response: {result}")
+                try:
+                    result = response.json()
+                except json.JSONDecodeError:
+                    self.logger.error(f"Invalid JSON in poll response: {response.text}")
+                    raise Exception("Invalid JSON in poll response")
                 
-                if result["status"] == "success":
-                    # First try the output field
-                    if "output" in result and result["output"]:
-                        return result["output"]
-                    # Then try future_links
-                    elif "future_links" in result and result["future_links"]:
-                        return result["future_links"]
-                    # Then try meta.output
-                    elif "meta" in result and "output" in result["meta"]:
-                        return result["meta"]["output"]
-                    else:
-                        raise Exception("No image URLs found in successful response")
-                elif result["status"] == "error":
-                    raise Exception(f"API Error: {result.get('message', 'Unknown error')}")
+                if result.get("status") == "success" and "output" in result:
+                    return result["output"]
+                elif result.get("status") == "processing":
+                    if attempt == self.max_polling_attempts:
+                        raise Exception(f"Polling timed out after {self.max_polling_attempts} attempts")
+                    
+                    self.logger.info(f"Still processing, waiting {poll_interval} seconds...")
+                    await asyncio.sleep(poll_interval)
+                    continue
+                else:
+                    error_msg = result.get("message", "Unknown error")
+                    raise Exception(f"API Error: {error_msg}")
+                    
+            except Exception as e:
+                if attempt == self.max_polling_attempts:
+                    raise Exception(f"Polling failed after {self.max_polling_attempts} attempts: {str(e)}")
                 
-                # Wait before next attempt
-                await asyncio.sleep(2)
-                
-            except requests.exceptions.RequestException as e:
-                self.logger.error(f"Polling request failed: {str(e)}")
-                raise
-                
-        raise Exception("Max polling attempts reached without getting results")
+                self.logger.error(f"Poll attempt failed: {str(e)}")
+                await asyncio.sleep(poll_interval)

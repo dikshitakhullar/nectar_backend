@@ -25,3 +25,7 @@ credentials/
 dataset/
 
 runs/
+
+*.jpg
+*.png
+!extension/icons/*.png

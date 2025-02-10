@@ -28,3 +28,6 @@ webcolors
 beautifulsoup4>=4.9.0
 
 transformers==4.33.0
+
+fastapi
+uvicorn
