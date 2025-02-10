@@ -1,7 +1,7 @@
 # Virtual environment
-myenv/
-venv/
+nectar_env/
 .env/
+.env
 
 # Python cache
 __pycache__/
