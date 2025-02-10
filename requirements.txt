@@ -3,7 +3,7 @@ firebase-admin==6.3.0
 
 # Data Validation & Serialization
 pydantic==2.6.1
-python-multipart==0.0.9
+python-multipart==0.0.18
 
 python-dotenv>=0.19.0
 requests>=2.26.0
